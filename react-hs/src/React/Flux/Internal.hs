@@ -1,27 +1,27 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE EmptyDataDecls #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns #-}
-
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE EmptyDataDecls             #-}
+{-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeFamilyDependencies     #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
+
+{-# LANGUAGE ViewPatterns               #-}
 
 -- | Internal module for React.Flux
 --
@@ -74,28 +74,28 @@ module React.Flux.Internal(
 ) where
 
 import           Control.Exception (throwIO, ErrorCall(ErrorCall))
-import           Data.String (IsString(..))
-import           Data.Aeson as A
-import           Data.Maybe (maybe)
-import qualified Data.HashMap.Strict as M
-import           Data.Typeable
-import           Control.Monad.Writer
-import           Control.Monad.RWS
 import           Control.Monad.Identity (Identity(..))
-import qualified Data.Text as T
-import           GHC.Generics
-
-import           Unsafe.Coerce
+import           Control.Monad.RWS
+import           Control.Monad.Writer
+import           Data.Aeson as A
+import qualified Data.HashMap.Strict as M
 import qualified Data.JSString as JSS
 import qualified Data.JSString.Text as JSS
-import           JavaScript.Array (JSArray)
-import qualified JavaScript.Array as JSA
-import           GHCJS.Foreign.Callback
-import qualified JavaScript.Object as JSO
-import           GHCJS.Types (JSVal, JSString, IsJSVal, jsval)
-import           GHCJS.Marshal (ToJSVal(..))
+import           Data.Maybe (maybe)
+import           Data.String (IsString(..))
+import qualified Data.Text as T
+
+import           Data.Typeable
+import           GHC.Generics
 import           GHCJS.Foreign (jsNull)
+import           GHCJS.Foreign.Callback
 import           GHCJS.Foreign.Export
+import           GHCJS.Marshal (ToJSVal(..))
+import           GHCJS.Types (JSVal, JSString, IsJSVal, jsval)
+import qualified JavaScript.Array as JSA
+import           JavaScript.Array (JSArray)
+import qualified JavaScript.Object as JSO
+import           Unsafe.Coerce
 
 
 -- | This type is for the return value of @React.createClass@
@@ -172,6 +172,10 @@ data PropertyOrHandler_ handler =
       { csPropertyName :: JSString
       , csFunc :: HandlerArg -> IO handler
       }
+ | CallbackPropertyWithSingleArgumentThis
+      { csPropertyName :: JSString
+      , ctFunc :: JSVal -> HandlerArg -> IO handler
+      }
  | forall props. Typeable props => CallbackPropertyReturningView
       { cretPropertyName :: JSString
       , cretArgToProp :: JSArray -> IO props
@@ -191,6 +195,7 @@ instance Functor PropertyOrHandler_ where
         ElementProperty name $ ReactElementM $ mapWriter (\((),e) -> ((), fmap f e)) mkElem
     fmap f (CallbackPropertyWithArgumentArray name h) = CallbackPropertyWithArgumentArray name (fmap f . h)
     fmap f (CallbackPropertyWithSingleArgument name h) = CallbackPropertyWithSingleArgument name (fmap f . h)
+    fmap f (CallbackPropertyWithSingleArgumentThis name h) = CallbackPropertyWithSingleArgumentThis name (\a b -> fmap f (h a b))
     fmap _ (CallbackPropertyReturningView name f v) = CallbackPropertyReturningView name f v
     fmap _ (CallbackPropertyReturningNewView name v p) = CallbackPropertyReturningNewView name v p
 
@@ -402,6 +407,13 @@ addPropOrHandlerToObj runHandler _ obj (CallbackPropertyWithSingleArgument name 
     -- this will be released by the render function of the class (jsbits/class.js)
     cb <- lift $ syncCallback1 ContinueAsync $ \ref ->
         runHandler =<< func (HandlerArg ref)
+    tell [jsval cb]
+    lift $ JSO.setProp name (jsval cb) obj
+
+addPropOrHandlerToObj runHandler (ReactThis this) obj (CallbackPropertyWithSingleArgumentThis name func) = do
+    -- this will be released by the render function of the class (jsbits/class.js)
+    cb <- lift $ syncCallback1 ContinueAsync $ \ref ->
+        runHandler =<< func this (HandlerArg ref)
     tell [jsval cb]
     lift $ JSO.setProp name (jsval cb) obj
 
