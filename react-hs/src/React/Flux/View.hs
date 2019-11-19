@@ -194,7 +194,7 @@ instance ( ControllerViewStores rest props handler
         syncCallback1 ThrowWouldBlock $ \arg -> do
           storeD :: store <- getStoreJs arg
           let a :: a = getField @field storeD
-          aE <- fakeExport $! a
+          aE <- export $! a
           js_setDeriveOutput arg aE
   {-# INLINE applyControllerViewFromJs #-}
   {-# INLINE stateForView #-}
